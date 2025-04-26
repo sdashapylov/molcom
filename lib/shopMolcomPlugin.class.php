@@ -37,8 +37,8 @@ class shopMolcomPlugin extends shopPlugin
             $xml->addChild('FILE_ID', 'InternetSale_'.$order_id.'_'.date('YmdHis'));
 
             $header = $xml->addChild('HEADER');
-            $header->addChild('OWNERCODE', 'AM');
-            $header->addChild('OWNERINN', '6732170940');
+            $header->addChild('OWNERCODE', $this->getSettings('owner_code'));
+            $header->addChild('OWNERINN', $this->getSettings('owner_inn'));
             $header->addChild('INVOICE', $order_id);
             $header->addChild('DATE', date('d.m.Y'));
             $header->addChild('ORDER_TYPE', '1');
@@ -113,9 +113,9 @@ class shopMolcomPlugin extends shopPlugin
             waFiles::create($tmp_path, $xml->asXML());
 
             // Данные доступа к SFTP
-            $sftp_host = '194.67.41.143';         // Заменить на реальный
-            $sftp_user = 'user_tpn';          // Заменить
-            $sftp_pass = 'Pohgh9Eib6tau';          // Заменить
+            $sftp_host = $this->getSettings('host');
+            $sftp_user = $this->getSettings('user');          // Заменить
+            $sftp_pass = $this->getSettings('password');;          // Заменить
             $remote_dir = '/incoming/orders/';     // Заменить на нужную папку
 
             try {

@@ -6,7 +6,7 @@ return [
         'value' => '',
         'control_type' => waHtmlControl::INPUT,
     ],
-    'login' => [
+    'user' => [
         'title' => 'Логин',
         'description' => 'Имя пользователя для подключения к серверу по SSH.',
         'value' => '',
