@@ -34,9 +34,28 @@ class shopMolcomPlugin extends shopPlugin
 
     public function orderActionProcess($params)
     {
-        $order_id = $params['order_id'];
+        $this->exportOrderToMolcom($params['order_id']);
+    }
+
+    public function orderActionPay($params)
+    {
+        $this->exportOrderToMolcom($params['order_id']);
+    }
+
+    private function exportOrderToMolcom($order_id)
+    {
         $order_model = new shopOrderModel();
         $order = $order_model->getById($order_id);
+
+        // Получаем параметры заказа
+        $order_params_model = new shopOrderParamsModel();
+        $params = $order_params_model->get($order_id);
+
+        // Проверяем, был ли уже выгружен заказ
+        if (!empty($params['molcom_exported'])) {
+            waLog::log("Molcom: заказ $order_id уже выгружен, повтор не требуется", 'molcom.log');
+            return;
+        }
 
         if ($order) {
             // 1. Генерируем XML
@@ -61,6 +80,10 @@ class shopMolcomPlugin extends shopPlugin
                 waLog::log("❌ SFTP ошибка: " . $e->getMessage(), 'molcom.log');
             }
 
+            // После успешной отправки:
+            $order_params_model->set($order_id, [
+                'molcom_exported' => date('Y-m-d H:i:s')
+            ]);
         } else {
             waLog::log("Error: Order not found for order_id " . $order_id, 'keycrm.log');
         }
