@@ -30,4 +30,11 @@ return [
         'value' => '',
         'control_type' => waHtmlControl::INPUT,
     ],
+
+    'save_path' => [
+        'title' => 'Путь на FTP',
+        'description' => 'Введите каталог куда нужно сохранить XML',
+        'value' => '',
+        'control_type' => waHtmlControl::INPUT,
+    ],
 ];

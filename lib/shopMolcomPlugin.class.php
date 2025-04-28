@@ -2,6 +2,36 @@
 
 class shopMolcomPlugin extends shopPlugin
 {
+    public function backendOrder($params)
+    {
+        $order_id = $params['id'];
+
+        $html = '<span id="' . $this->id . '-action-button" class="button send-to-keycrm-link" data-order-id="' . $order_id . '"><i class="fa fa-key text-blue"></i> ' . _wp('Отправить в Molcom') . '</span>';
+
+        // JavaScript для AJAX-запроса
+        $html .= '
+        <script>
+            $(document).ready(function() {
+				$(document).off("click", ".send-to-keycrm-link");
+				
+                $(document).on("click", ".send-to-keycrm-link", function() {
+                    var orderId = $(this).data("order-id");
+                    $.post("?plugin=molcom&action=sendOrder", {order_id: orderId}, function(response) {
+                        if (response.status === "ok") {
+                            alert("Заказ успешно отправлен в МОЛКОМ");
+                        } else {
+                            alert("Ошибка при отправке");
+                        }
+                    }, "json");
+                });
+            });
+        </script>';
+
+        return [
+            'action_button' => $html,
+        ];
+    }
+
     public function orderActionProcess($params)
     {
         $order_id = $params['order_id'];
@@ -9,129 +39,23 @@ class shopMolcomPlugin extends shopPlugin
         $order = $order_model->getById($order_id);
 
         if ($order) {
-            // Fetch contact details
-            $contact = new waContact($order['contact_id']);
-            $order['contact'] = [
-                'name' => $contact->get('name'),
-                'lastname' => $contact->get('lastname'),
-                'email' => $contact->get('email'),
-                'phone' => $contact->get('phone'),
-            ];
+            // 1. Генерируем XML
+            $settings = $this->getSettings();
+            $xml_content = MolcomOrderXmlBuilder::build($order, $settings);
 
-            $order_items_model = new shopOrderItemsModel();
-            $order['items'] = $order_items_model->getByField('order_id', $order_id, true);
-
-            // Fetch product details including image_id
-            foreach ($order['items'] as &$item) {
-                $product_skus_model = new shopProductSkusModel();
-                $sku = $product_skus_model->getById($item['sku_id']);
-                if ($sku) {
-                    $product = new shopProduct($sku['product_id']);
-                    $images = $product->getImages([
-                        'aux' => '200',
-                    ]);
-                }
-            }
-
-            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="UTF-8"?><ORD></ORD>');
-            $xml->addChild('FILE_ID', 'InternetSale_'.$order_id.'_'.date('YmdHis'));
-
-            $header = $xml->addChild('HEADER');
-            $header->addChild('OWNERCODE', $this->getSettings('owner_code'));
-            $header->addChild('OWNERINN', $this->getSettings('owner_inn'));
-            $header->addChild('INVOICE', $order_id);
-            $header->addChild('DATE', date('d.m.Y'));
-            $header->addChild('ORDER_TYPE', '1');
-            $header->addChild('EST_SHIP_DATE', date('d.m.Y', strtotime('+1days')));
-            $header->addChild('SHIPMENT_METHOD', 'DPD');
-            $header->addChild('DeliveryService', '');
-            $header->addChild('AmountwVAT', round(($order['total'] - $order['shipping'] + $order['discount']), 2));
-            $header->addChild('VATpercent', 20); //
-            $header->addChild('AmountVAT', round(($order['total'] - $order['shipping'])*0.1666666666666667, 2));
-            $header->addChild('TotalDiscount', round($order['discount'], 2));
-            $header->addChild('AmountShipwoVAT', round($order['shipping'] - $order['shipping']*0.1666666666666667, 2));
-            $header->addChild('AmountShipVAT', round($order['shipping']*0.1666666666666667, 2));
-            $header->addChild('AmountShipwVAT', round($order['shipping'], 2));
-            $header->addChild('ShipDiscount', 0);
-            $header->addChild('orderPaymentType', '');
-            $header->addChild('Phone', $order['contact']['phone'][0]['value'] ?? '');
-            $header->addChild('COMMENT', isset($order['comment']) && !empty($order['comment']) ? strip_tags($order['comment']) : '');
-            $header->addChild('HasDanger', 0);
-            $header->addChild('LastName', $order['contact']['lastname']);
-            $header->addChild('Name', $order['contact']['name']);
-            $header->addChild('MiddleName', '');
-            $header->addChild('Email', $order['contact']['email'][0]['value']);
-
-            if (isset($order['params']['shipping_address.country']) && !empty($order['params']['shipping_address.country'])) {
-                $header->addChild('Country', $order['params']['shipping_address.country'] == 'rus' ? 'Россия' : $order['params']['shipping_address.country']);
-            }
-
-//            $header->addChild('Index', $order['shipping_address']['zip']);
-
-            if (isset($order['params']['shipping_address.region']) && !empty($order['params']['shipping_address.region'])) {
-                $header->addChild('Region', $order['params']['shipping_address.region']);
-            }
-            if (isset($order['params']['shipping_address.city']) && !empty($order['params']['shipping_address.city'])) {
-                $header->addChild('City', $order['params']['shipping_address.city']);
-            }
-
-            $header->addChild('Street', $order['shipping_address']['street'] ?? '');
-            $header->addChild('House', $order['shipping_address']['house'] ?? '');
-            $header->addChild('Building', '');
-            $header->addChild('Flat', $order['shipping_address']['room'] ?? '');
-            $header->addChild('PickPoint_Code', '');
-
-            if (isset($order['roistat_visit']) && !empty($order['roistat_visit'])) {
-                $header->addChild('roistat', $order['roistat_visit']);
-            }
-
-
-            $details = $xml->addChild('DETAILS');
-            $n = 1;
-            foreach ($order['items'] as $item) {
-                $detail = $details->addChild('DETAIL');
-                $detail->addChild('N_STR', $n++);
-                $detail->addChild('STOCK_NUMBER', $item['sku_code']);
-                $detail->addChild('STOCK_NAME', htmlspecialchars($item['name']));
-                $detail->addChild('MeasureUnit', 'ШТ');
-                $detail->addChild('UnitPrice', round($item['price'] - ($item['price']*0.1666666666666667), 2));
-
-                $order_item_nds_price = round($item['price']*0.1666666666666667, 2);
-                $detail->addChild('UnitVAT', $order_item_nds_price);
-
-                $detail->addChild('PRICE', round($item['price'], 2));
-                $detail->addChild('LinePrice', round(($item['price'] - ($item['price']*0.1666666666666667))*$item['quantity'], 2));
-                $detail->addChild('LineVAT', round(($item['price']*0.1666666666666667)*$item['quantity'], 2));
-                $detail->addChild('SUM', round($item['price']*$item['quantity'], 2));
-                $detail->addChild('LineDiscount', round($item['total_discount'], 2));
-                $detail->addChild('QTYEXPECTED', $item['quantity']);
-                $detail->addChild('LineAmount', round(($item['price']*$item['quantity'] -$item['total_discount']), 2));
-            }
-
+            // 2. Сохраняем временно (если нужно)
             $filename = 'InternetSale_'.$order_id.'_'.date('YmdHis').'.xml';
-            $tmp_path = wa()->getTempPath('molcom/' . $filename, 'shop');
-            waFiles::create($tmp_path, $xml->asXML());
 
-            // Данные доступа к SFTP
-            $sftp_host = $this->getSettings('host');
-            $sftp_user = $this->getSettings('user');          // Заменить
-            $sftp_pass = $this->getSettings('password');;          // Заменить
-            $remote_dir = '/incoming/orders/';     // Заменить на нужную папку
+            // 3. Отправляем на SFTP
+            $sftp_sender = new MolcomSftpSender(
+                $this->getSettings('host'),
+                $this->getSettings('user'),
+                $this->getSettings('password'),
+                $this->getSettings('save_path')
+            );
 
             try {
-                $sftp = new SFTP($sftp_host);
-                if (!$sftp->login($sftp_user, $sftp_pass)) {
-                    throw new Exception("Не удалось авторизоваться на SFTP");
-                }
-
-                if (!$sftp->chdir($remote_dir)) {
-                    throw new Exception("Не удалось открыть папку $remote_dir на сервере");
-                }
-
-                if (!$sftp->put($filename, file_get_contents($tmp_path))) {
-                    throw new Exception("Ошибка при загрузке файла $filename");
-                }
-
+                $sftp_sender->send($filename, $xml_content);
                 waLog::log("✅ Успешно отправлен на SFTP: $filename", 'molcom.log');
             } catch (Exception $e) {
                 waLog::log("❌ SFTP ошибка: " . $e->getMessage(), 'molcom.log');
