@@ -25,6 +25,11 @@ class MolcomOrderXmlBuilder extends waJsonController
     public static function build($order, $settings)
     {
         $order_id = $order['id'];
+
+        // $shipping_name = $order['params']['shipping_name'] ?? '';
+        // $payment_name  = $order['params']['payment_name'] ?? '';
+
+
         // $order_model = new shopOrderModel();
         // $order = $order_model->getById($order_id);
 
