@@ -45,17 +45,17 @@ class MolcomOrderXmlBuilder extends waJsonController
         $order_items_model = new shopOrderItemsModel();
         $order['items'] = $order_items_model->getByField('order_id', $order_id, true);
 
-        // Fetch product details including image_id
-        foreach ($order['items'] as &$item) {
-            $product_skus_model = new shopProductSkusModel();
-            $sku = $product_skus_model->getById($item['sku_id']);
-            if ($sku) {
-                $product = new shopProduct($sku['product_id']);
-                $images = $product->getImages([
-                    'aux' => '200',
-                ]);
-            }
-        }
+//        // Fetch product details including image_id
+//        foreach ($order['items'] as &$item) {
+//            $product_skus_model = new shopProductSkusModel();
+//            $sku = $product_skus_model->getById($item['sku_id']);
+//            if ($sku) {
+//                $product = new shopProduct($sku['product_id']);
+//                $images = $product->getImages([
+//                    'aux' => '200',
+//                ]);
+//            }
+//        }
 
         $plugin = wa('shop')->getPlugin('molcom');
 
@@ -70,7 +70,8 @@ class MolcomOrderXmlBuilder extends waJsonController
         $header->addChild('ORDER_TYPE', '1');
         $header->addChild('EST_SHIP_DATE', date('d.m.Y', strtotime('+1days')));
         $header->addChild('SHIPMENT_METHOD', 'DPD');
-        $header->addChild('DeliveryService', '');
+        $header->addChild('DeliveryService', $order['delivery_service']);
+
         $header->addChild('AmountwVAT', round(($order['total'] - $order['shipping'] + $order['discount']), 2));
         $header->addChild('VATpercent', 20); //
         $header->addChild('AmountVAT', round(($order['total'] - $order['shipping'])*0.1666666666666667, 2));
@@ -79,7 +80,27 @@ class MolcomOrderXmlBuilder extends waJsonController
         $header->addChild('AmountShipVAT', round($order['shipping']*0.1666666666666667, 2));
         $header->addChild('AmountShipwVAT', round($order['shipping'], 2));
         $header->addChild('ShipDiscount', 0);
-        $header->addChild('orderPaymentType', '');
+
+        if (isset($order['params']['payment_id']) && !empty($order['params']['payment_id'])) {
+            if ($order['params']['payment_id'] == 1 || $order['params']['payment_id'] == 11) {
+                $header->addChild('orderPaymentType', 'CashOnDelivery');
+            } elseif ($order['params']['payment_id'] == 22) { // полная оплата бонусами
+                $header->addChild('orderPaymentType', 'tinkoff');
+            }
+
+            if ($order['params']['payment_id'] == 1 || $order['params']['payment_id'] == 11) {
+                $header->addChild('orderPaymentType', 'CashOnDelivery');
+            } elseif ($order['params']['payment_id'] == 22) { // полная оплата бонусами
+                $header->addChild('orderPaymentType', 'tinkoff');
+            }
+
+            if ($order['params']['payment_id'] == 1 || $order['params']['payment_id'] == 11) {
+                $header->addChild('DeliveryService', 'CashOnDelivery');
+            } elseif ($order['params']['payment_id'] == 22) { // полная оплата бонусами
+                $header->addChild('DeliveryService', 'YOOKASSA');
+            }
+        }
+
 
         if (isset($order['contact']['phone']) && !empty($order['contact']['phone'])) {
             if ($order_contact_phone = self::convertPhoneToMolcomFormat($order['contact']['phone'][0]['value'])) {
@@ -139,6 +160,8 @@ class MolcomOrderXmlBuilder extends waJsonController
             $detail->addChild('LineDiscount', round($item['total_discount'], 2));
             $detail->addChild('QTYEXPECTED', $item['quantity']);
             $detail->addChild('LineAmount', round(($item['price']*$item['quantity'] -$item['total_discount']), 2));
+
+            waLog::log( $item, 'molcom.log');
         }
 
         return $xml->asXML();

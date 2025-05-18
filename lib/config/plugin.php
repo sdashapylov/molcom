@@ -6,6 +6,7 @@ return [
   'vendor' => '1223107',
   'handlers' => [
       'order_action.process' => 'orderActionProcess',
+      'order_action.pay' => 'orderActionPay',
       'backend_order' => 'backendOrder'
   ]
 ];
